@@ -1,0 +1,73 @@
+# =========================
+# Large datasets
+# =========================
+Datasets/
+data/
+dataset/
+datasets/
+*.parquet
+*.pkl
+*.pickle
+*.csv
+
+# 允许保留小型示例说明文件
+!README.md
+!requirements.txt
+!configs/*.json
+!configs/*.yaml
+!configs/*.yml
+
+# 如果你想保留某些小型结果 csv，可以手动取消忽略
+# !outputs/backtest/backtest_metrics.csv
+# !outputs/robust_backtest_oc_label/strategy_metrics_summary.csv
+
+# =========================
+# Model checkpoints
+# =========================
+*.pt
+*.pth
+*.ckpt
+*.onnx
+outputs/models/
+checkpoints/
+weights/
+
+# =========================
+# Python cache
+# =========================
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+wandb/
+runs/
+
+# =========================
+# Environment
+# =========================
+.env
+.venv/
+venv/
+conda-meta/
+
+# =========================
+# OS / editor
+# =========================
+.DS_Store
+.vscode/
+.idea/
+
+# =========================
+# Large output folders
+# =========================
+outputs/predictions/
+outputs/backtest/*.csv
+outputs/robust_backtest*/realistic_signal_predictions.csv
+outputs/robust_backtest*/mlp_*_positions.csv
+outputs/robust_backtest*/mlp_*_trades.csv
+outputs/robust_backtest*/random_*_sample_nav.csv

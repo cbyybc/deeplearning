@@ -1,0 +1,58 @@
+{
+  "data_path": "Datasets/processed/all_stock_features_with_oc_label.parquet",
+  "output_dir": "outputs",
+  "label_col": "label_oc_1d",
+  "feature_cols": [
+    "close_rank",
+    "vol_rank",
+    "amount_rank",
+    "amplitude",
+    "body_ratio",
+    "ret_1",
+    "ret_5",
+    "ret_10",
+    "ret_20",
+    "rel_ma5",
+    "rel_ma10",
+    "rel_ma20",
+    "rsi_14",
+    "macd_dif",
+    "macd_dea",
+    "macd_bar",
+    "vol_std_10",
+    "vol_std_20",
+    "vol_chg",
+    "amount_chg"
+  ],
+  "split": {
+    "train_start": 20190101,
+    "train_end": 20231231,
+    "valid_start": 20240101,
+    "valid_end": 20241231,
+    "backtest_start": 20250101,
+    "backtest_end": 20251231
+  },
+  "preprocess": {
+    "feature_clip_lower": 0.01,
+    "feature_clip_upper": 0.99,
+    "label_clip_lower": 0.01,
+    "label_clip_upper": 0.99
+  },
+  "train": {
+    "seed": 42,
+    "batch_size": 65536,
+    "epochs": 30,
+    "lr": 0.002,
+    "weight_decay": 0.0001,
+    "hidden_dims": [512, 256, 128],
+    "dropout": 0.2,
+    "early_stop_patience": 5,
+    "loss": "smooth_l1"
+  },
+  "backtest": {
+    "top_k": 10,
+    "drop_k": 2,
+    "initial_nav": 1.0,
+    "fee_rate": 0.0003
+  }
+}
