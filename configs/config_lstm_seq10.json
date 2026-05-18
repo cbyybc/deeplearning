@@ -1,6 +1,6 @@
 {
   "data_path": "Datasets/processed/all_stock_features_with_oc_label.parquet",
-  "output_dir": "outputs_lstm_seq10",
+  "output_dir": "outputs_lstm_seq10_e60",
   "label_col": "label_oc_1d",
   "feature_cols": [
     "close_rank",
@@ -44,14 +44,14 @@
   "train": {
     "seed": 42,
     "batch_size": 32768,
-    "epochs": 20,
+    "epochs": 60,
     "lr": 0.001,
     "weight_decay": 0.0001,
     "hidden_size": 128,
     "num_layers": 2,
     "dropout": 0.2,
     "bidirectional": false,
-    "early_stop_patience": 4,
+    "early_stop_patience": 8,
     "loss": "smooth_l1",
     "num_workers": 4
   },
