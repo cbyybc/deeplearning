@@ -20,34 +20,20 @@ datasets/
 *.pth
 *.ckpt
 *.onnx
-outputs/models/
-outputs_lstm/models/
-outputs_lstm_seq10/models/
+outputs*/models/
 checkpoints/
 weights/
 
 # =========================
-# Large prediction / record files
+# Large prediction files
 # =========================
-outputs/predictions/
-outputs_lstm/predictions/
-outputs_lstm_seq10/predictions/
-
-outputs/backtest/*.csv
-outputs/robust_backtest*/realistic_signal_predictions*.csv
-outputs/robust_backtest*/*positions*.csv
-outputs/robust_backtest*/*trades*.csv
-outputs/robust_backtest*/random_*_sample_nav.csv
-
-outputs_lstm/robust_backtest*/realistic_signal_predictions*.csv
-outputs_lstm/robust_backtest*/*positions*.csv
-outputs_lstm/robust_backtest*/*trades*.csv
-outputs_lstm/robust_backtest*/random_*_sample_nav.csv
-
-outputs_lstm_seq10/robust_backtest*/realistic_signal_predictions*.csv
-outputs_lstm_seq10/robust_backtest*/*positions*.csv
-outputs_lstm_seq10/robust_backtest*/*trades*.csv
-outputs_lstm_seq10/robust_backtest*/random_*_sample_nav.csv
+outputs*/predictions/
+outputs*/**/t1_signal_predictions.csv
+outputs*/**/realistic_signal_predictions*.csv
+outputs*/**/*positions*.csv
+outputs*/**/*trades*.csv
+outputs*/**/random_*_sample_nav.csv
+outputs*/**/strategy_metrics_all_runs*.csv
 
 # =========================
 # Python cache
@@ -84,39 +70,14 @@ conda-meta/
 # =========================
 # Keep useful small result files
 # =========================
-
-!outputs/
-!outputs/figures/
-!outputs/figures/**/*.png
-!outputs/*.json
-!outputs/*.csv
-
-!outputs/robust_backtest_oc_label/
-!outputs/robust_backtest_oc_label/*.png
-!outputs/robust_backtest_oc_label/*.json
-!outputs/robust_backtest_oc_label/strategy_metrics_summary.csv
-!outputs/robust_backtest_oc_label/monthly_ic.csv
-
-!outputs_lstm/
-!outputs_lstm/figures/
-!outputs_lstm/figures/**/*.png
-!outputs_lstm/*.json
-!outputs_lstm/*.csv
-
-!outputs_lstm/robust_backtest_lstm/
-!outputs_lstm/robust_backtest_lstm/*.png
-!outputs_lstm/robust_backtest_lstm/*.json
-!outputs_lstm/robust_backtest_lstm/strategy_metrics_summary_lstm.csv
-!outputs_lstm/robust_backtest_lstm/monthly_ic_lstm.csv
-
-!outputs_lstm_seq10/
-!outputs_lstm_seq10/figures/
-!outputs_lstm_seq10/figures/**/*.png
-!outputs_lstm_seq10/*.json
-!outputs_lstm_seq10/*.csv
-
-!outputs_lstm_seq10/robust_backtest_lstm/
-!outputs_lstm_seq10/robust_backtest_lstm/*.png
-!outputs_lstm_seq10/robust_backtest_lstm/*.json
-!outputs_lstm_seq10/robust_backtest_lstm/strategy_metrics_summary_lstm.csv
-!outputs_lstm_seq10/robust_backtest_lstm/monthly_ic_lstm.csv
+!outputs*/
+!outputs*/figures/
+!outputs*/figures/*.png
+!outputs*/figures/**/*.png
+!outputs*/**/*.png
+!outputs*/**/*.json
+!outputs*/**/strategy_metrics_summary*.csv
+!outputs*/**/monthly_ic*.csv
+!outputs*/training_history*.csv
+!outputs*/metrics_valid*.json
+!outputs*/preprocess_state*.json
