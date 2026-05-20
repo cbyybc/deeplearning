@@ -152,6 +152,6 @@
     "vol_chg": 0.514537927779672,
     "amount_chg": 0.5333119113350386
   },
-  "seq_len": 20,
-  "moving_avg": 5
+  "seq_len": 10,
+  "moving_avg": 3
 }
