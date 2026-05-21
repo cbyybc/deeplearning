@@ -107,6 +107,16 @@ def run_command(cmd: list[str], cwd: Path) -> tuple[int, str]:
     return proc.returncode, proc.stdout
 
 
+def prediction_error_hint(output: str) -> str:
+    if "missing required columns" in output or "Column not found" in output:
+        return "行情文件缺少预测所需的 OHLCV 列。请确认包含 trade_date/open/high/low/close/pre_close/vol/amount。"
+    if "No valid sequence generated" in output:
+        return "没有股票构造出有效序列。请提供截至 signal_date 的历史日行情，通常每只股票至少准备最近 30 个交易日。"
+    if "size mismatch" in output and "state_dict" in output:
+        return "模型权重与预测脚本中的模型结构不一致。请使用与当前仓库代码匹配的 checkpoint。"
+    return ""
+
+
 def csv_download_button(df: pd.DataFrame, label: str, filename: str):
     if df.empty:
         st.download_button(label, data="", file_name=filename, mime="text/csv", disabled=True)
@@ -399,6 +409,11 @@ with tab_predict:
                 st.success("预测完成。")
             else:
                 st.error(f"预测脚本运行失败，返回码：{code}")
+
+    if "output" in locals() and "code" in locals() and code != 0:
+        hint = prediction_error_hint(output)
+        if hint:
+            st.warning(hint)
 
     cand_df = read_csv_if_exists(latest_candidates_path)
     if not cand_df.empty:
