@@ -212,8 +212,14 @@ with st.sidebar:
     st.divider()
     st.subheader("预测参数")
     data_dir_manual = st.text_input("行情数据目录", str(project_root / "../Datasets/stocks"))
-    checkpoint = st.text_input("模型权重 checkpoint", str(project_root / "outputs_lstm_seq10_oo_e60" / "best_model.pt"))
-    scaler = st.text_input("训练集 scaler.json", str(project_root / "outputs_lstm_seq10_oo_e60" / "scaler.json"))
+    checkpoint = st.text_input(
+        "模型权重 checkpoint",
+        str(project_root / "outputs_lstm_seq10_oo_e60" / "models" / "best_lstm.pt"),
+    )
+    scaler = st.text_input(
+        "训练集预处理参数",
+        str(project_root / "outputs_lstm_seq10_oo_e60" / "preprocess_state_lstm.json"),
+    )
     seq_len = st.number_input("seq_len", min_value=1, max_value=120, value=10, step=1)
     signal_date = st.text_input("signal_date，可留空自动识别最新日期", "")
     device = st.selectbox("device", ["cuda", "cpu"], index=0)
