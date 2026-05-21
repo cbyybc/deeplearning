@@ -143,7 +143,7 @@ def plot_benchmark_nav(nav_dict, out_dir):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--market_dir", type=str, default="/dataset/market")
+    parser.add_argument("--market_dir", type=str, default="../Datasets/market")
     parser.add_argument("--out_dir", type=str, default="outputs_benchmark/index")
     parser.add_argument("--start_date", type=int, default=20250101)
     parser.add_argument("--end_date", type=int, default=20251231)
