@@ -228,65 +228,51 @@ outputs_trade_plan/
   比赛买入、卖出、持有拆分清单
 ```
 
-## 本地权重运行图形化程序教程
+## Clone 仓库后运行图形化预测交易教程
 
-图形化交易助手可以完全在本地运行，不需要服务器。只要本机具备模型推理所需文件，界面会在本地调用预测脚本和交易计划脚本。
+本项目的图形化交易助手可以在本地运行，不需要服务器。GitHub 仓库已经包含 dashboard、预测脚本、交易计划脚本、训练好的模型权重和训练期预处理参数；使用者 clone 仓库后只需要准备 Python 环境和最新行情数据。
 
-### 1. 本地运行需要什么
+### 1. 仓库中已经包含什么
 
-| 类型 | 文件或目录 | 作用 | 是否随代码仓库提供 |
-|---|---|---|---|
-| 代码 | `src/trading_dashboard.py` | Streamlit 图形界面 | 需要上传到 GitHub |
-| 代码 | `src/predict_daily.py` | 使用权重生成每日候选分数 | GitHub 已有 |
-| 代码 | `src/make_trade_plan.py` | 生成买入、卖出、持有清单 | GitHub 已有 |
-| 依赖 | `requirements.txt` | 安装 Python 依赖，需包含 `streamlit` | 需要上传最新版 |
-| 权重 | `best_model.pt` | LSTM 模型参数 | 通常单独下载，不建议直接放 GitHub |
-| 预处理参数 | `scaler.json` | 训练期特征标准化参数 | 必须与权重配套提供 |
-| 行情数据 | 最新股票 `csv` / `parquet` 文件 | 生成信号日特征序列 | 由使用者本地准备 |
-| 持仓文件 | `data/current_positions.csv` | 记录同花顺真实持仓 | 可由界面创建 |
+| 类型 | 仓库路径 | 作用 |
+|---|---|---|
+| 图形界面 | `src/trading_dashboard.py` | 上传数据、维护持仓、运行预测、生成交易计划 |
+| 每日预测 | `src/predict_daily.py` | 使用 LSTM 权重生成候选股票预测分数 |
+| 交易计划 | `src/make_trade_plan.py` | 生成 buy / sell / hold 清单 |
+| 依赖清单 | `requirements.txt` | 包含 `streamlit` 等运行依赖 |
+| 主交易权重 | `outputs_lstm_seq10_oo_e60/models/best_lstm.pt` | `LSTM seq10 + label_oo_1d` 权重 |
+| 预处理参数 | `outputs_lstm_seq10_oo_e60/preprocess_state_lstm.json` | 训练期特征均值、标准差和特征列配置 |
 
-注意：
+默认图形界面使用 `LSTM seq10 + label_oo_1d`，因为它是当前严格 T+1 主交易方案。仓库还保存了其他 MLP、LSTM、DLinear 权重用于实验复现，但每日 dashboard 的默认预测结构与 LSTM seq10 权重对应。
 
-```text
-1. 只有 best_model.pt 不足以复现每日预测，必须同时有配套 scaler.json。
-2. checkpoint、scaler、特征列顺序和预测脚本必须来自同一套训练流程。
-3. 数据和模型权重一般不随课程代码仓库上传，下载代码后需要手动放到本地指定位置。
+### 2. Clone 仓库并拉取 Git LFS 权重
+
+模型权重通过 Git LFS 管理。第一次使用前建议安装 Git LFS，然后 clone 仓库：
+
+```powershell
+git lfs install
+git clone https://github.com/cbyybc/deeplearning.git
+cd deeplearning
+git lfs pull
 ```
 
-### 2. 推荐本地目录结构
-
-为了让 dashboard 默认路径直接可用，推荐把下载的权重和 scaler 放到以下位置：
+拉取后检查主交易权重是否为真实权重文件：
 
 ```text
-deeplearning/
-  requirements.txt
-  README.md
-  src/
-    trading_dashboard.py
-    predict_daily.py
-    make_trade_plan.py
-  outputs_lstm_seq10_oo_e60/
-    best_model.pt
-    scaler.json
-  data/
-    current_positions.csv
-  local_market_data/
-    000001.SZ.csv
-    000002.SZ.csv
-    ...
+outputs_lstm_seq10_oo_e60/models/best_lstm.pt
 ```
 
-`local_market_data/` 也可以换成你自己的最新行情目录。预测脚本会读取该目录中的 `csv` 或 `parquet` 文件。
+如果该文件内容只是几行 `git-lfs` 指针文本，说明权重还没有被 LFS 下载，需要重新执行 `git lfs pull`。
 
-### 3. 下载代码并准备环境
+### 3. 准备本地 Python 环境
 
-在本机安装 Python 后，进入项目目录安装依赖：
+直接安装依赖：
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-如果使用虚拟环境，可以先执行：
+也可以使用虚拟环境：
 
 ```powershell
 python -m venv .venv
@@ -294,64 +280,90 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 4. 放入下载的权重和 scaler
+### 4. 准备最新行情数据
 
-将下载得到的模型文件放到：
+行情数据不会随 GitHub 仓库上传。使用者需要在本地准备最新 A 股日频 `csv` 或 `parquet` 数据目录，供 `src/predict_daily.py` 计算特征和构造最近 `seq_len=10` 的输入窗口。
 
-```text
-outputs_lstm_seq10_oo_e60/best_model.pt
-```
-
-将与该权重配套的标准化文件放到：
+输入数据至少需要包含：
 
 ```text
-outputs_lstm_seq10_oo_e60/scaler.json
+ts_code
+trade_date
+open
+high
+low
+close
+pre_close
+vol
+amount
 ```
 
-如果权重和 scaler 放在其他目录，也可以启动 dashboard 后在左侧栏手动填写完整路径。
+目录可以放在仓库外部，也可以本地放成类似：
+
+```text
+deeplearning/
+  local_market_data/
+    000001.SZ.csv
+    000002.SZ.csv
+    ...
+```
 
 ### 5. 启动图形化程序
 
-如果 dashboard 位于仓库 `src/` 目录：
+在仓库根目录运行：
 
 ```powershell
 streamlit run src/trading_dashboard.py
 ```
 
-如果 dashboard 当前位于项目根目录：
+Streamlit 会打开本地网页界面。预测、CSV 读写和交易计划生成都在本机完成。
 
-```powershell
-streamlit run trading_dashboard.py
-```
+### 6. 第一次打开界面时核对默认路径
 
-Streamlit 会在本机启动网页界面。浏览器页面只是本地操作面板，模型推理、CSV 读写和交易计划生成都在本机完成。
-
-### 6. 在界面中完成一次预测和交易计划
-
-1. 在侧边栏确认 `项目根目录`、`checkpoint`、`scaler.json`、`TopK=10`、`DropK=2`、`signal_date` 和计划交易日期。
-2. 在“上传/选择数据”页选择最新行情目录，或上传本次使用的 `csv`、`parquet`、`zip` 数据。
-3. 在“当前持仓”页创建或更新 `data/current_positions.csv`。第一次建仓时可先使用空持仓。
-4. 在“生成预测”页运行每日预测，生成 `outputs_daily/latest_candidates.csv`。
-5. 在“生成交易计划”页生成交易计划。
-6. 在“查看与下载”页下载：
+dashboard 默认指向：
 
 ```text
-latest_buy_list.csv
-latest_sell_list.csv
-latest_hold_list.csv
-latest_trade_plan.csv
+checkpoint:
+outputs_lstm_seq10_oo_e60/models/best_lstm.pt
+
+训练期预处理参数:
+outputs_lstm_seq10_oo_e60/preprocess_state_lstm.json
 ```
 
-7. 在同花顺模拟盘按清单人工交易，成交后回到界面更新真实持仓。
+如果想使用其他模型权重，需要先确认预测脚本结构、`seq_len`、特征列和预处理参数与该模型完全匹配，再在侧边栏修改路径。
 
-### 7. 常见问题
+### 7. 在界面中生成预测和交易计划
+
+1. 在侧边栏确认项目根目录、checkpoint、训练期预处理参数、`TopK=10`、`DropK=2`、`signal_date` 和计划交易日期。
+2. 在“上传/选择数据”页选择本地最新行情目录，或上传本次使用的 `csv`、`parquet`、`zip` 数据。
+3. 在“当前持仓”页创建或更新 `data/current_positions.csv`。首次建仓可先使用空持仓。
+4. 在“生成预测”页运行每日预测，得到：
+
+```text
+outputs_daily/latest_candidates.csv
+```
+
+5. 在“生成交易计划”页运行计划生成，得到：
+
+```text
+outputs_trade_plan/latest_buy_list.csv
+outputs_trade_plan/latest_sell_list.csv
+outputs_trade_plan/latest_hold_list.csv
+outputs_trade_plan/latest_trade_plan.csv
+```
+
+6. 在“查看与下载”页核对清单，再到同花顺模拟盘人工下单。
+7. 成交后回到界面更新真实持仓，第二天继续使用。
+
+### 8. 常见问题
 
 | 问题 | 优先检查 |
 |---|---|
 | `No module named streamlit` | 重新执行 `pip install -r requirements.txt` |
-| 找不到 `best_model.pt` | 检查 checkpoint 路径是否指向下载权重 |
-| 找不到 `scaler.json` | 确认下载了与权重配套的 scaler |
-| `No valid sequence generated` | 检查行情目录是否包含信号日数据，且每只股票有足够历史窗口 |
+| 权重像几行文本 | 执行 `git lfs pull`，确认 Git LFS 已拉取真实 `.pt` 文件 |
+| 找不到 checkpoint | 使用仓库默认路径 `outputs_lstm_seq10_oo_e60/models/best_lstm.pt` |
+| 找不到预处理文件 | 使用仓库默认路径 `outputs_lstm_seq10_oo_e60/preprocess_state_lstm.json` |
+| `No valid sequence generated` | 检查行情目录是否含信号日数据，且每只股票有足够历史窗口 |
 | 交易日期不对 | 显式填写 `signal_date` 和 `trade_date`，周末/节假日不要依赖自然日加一 |
 | 候选中出现不合规股票 | 再次核对北交所与 ST 过滤结果 |
 
@@ -1175,8 +1187,8 @@ streamlit run trading_dashboard.py
 ```powershell
 python src/predict_daily.py `
   --data_dir <latest_stock_data_dir> `
-  --checkpoint <lstm_seq10_oo_checkpoint> `
-  --scaler <train_scaler_json> `
+  --checkpoint outputs_lstm_seq10_oo_e60/models/best_lstm.pt `
+  --scaler outputs_lstm_seq10_oo_e60/preprocess_state_lstm.json `
   --signal_date 2026-06-01 `
   --trade_date 2026-06-02 `
   --seq_len 10 `
@@ -1244,7 +1256,7 @@ python src/make_trade_plan.py `
 
 ## I. GitHub 上传说明
 
-不上传大型数据文件和模型权重。
+不上传大型原始数据和处理后数据。模型权重当前通过 Git LFS 上传，便于 clone 后本地运行图形化程序。
 
 建议上传：
 
@@ -1256,7 +1268,8 @@ requirements.txt
 src/trading_dashboard.py
 src/predict_daily.py
 src/make_trade_plan.py
-推理用 scaler.json 或与权重同包提供的 scaler.json
+outputs_lstm_seq10_oo_e60/models/best_lstm.pt
+outputs_lstm_seq10_oo_e60/preprocess_state_lstm.json
 关键结果图
 小型 JSON 指标
 strategy_metrics_summary*.csv
@@ -1268,7 +1281,6 @@ monthly_ic*.csv
 ```text
 原始数据
 处理后的 parquet 数据
-模型权重
 大型预测 CSV
 大型持仓记录
 大型交易记录
@@ -1280,6 +1292,7 @@ monthly_ic*.csv
 1. GitHub 中存在 README.md。
 2. GitHub 中存在 requirements.txt，且包含 streamlit。
 3. GitHub 中存在 src/trading_dashboard.py、src/predict_daily.py、src/make_trade_plan.py。
-4. 权重下载包中同时提供 best_model.pt 与配套 scaler.json。
-5. README 说明行情数据需要由使用者本地准备，不能只下载权重就直接预测。
+4. Git LFS 中存在 `outputs_lstm_seq10_oo_e60/models/best_lstm.pt`。
+5. GitHub 中存在 `outputs_lstm_seq10_oo_e60/preprocess_state_lstm.json`。
+6. README 说明 clone 后仍需准备本地最新行情数据。
 ```
