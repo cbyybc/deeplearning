@@ -5,7 +5,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
+
+from model_lstm import LSTMRegressor
 
 
 FEATURE_COLS = [
@@ -31,29 +32,16 @@ FEATURE_COLS = [
     "amount_chg",
 ]
 
-
-class LSTMRegressor(nn.Module):
-    def __init__(self, input_dim, hidden_size=128, num_layers=2, dropout=0.2):
-        super().__init__()
-        self.lstm = nn.LSTM(
-            input_size=input_dim,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            dropout=dropout if num_layers > 1 else 0.0,
-            batch_first=True,
-            bidirectional=False,
-        )
-        self.head = nn.Sequential(
-            nn.Linear(hidden_size, 64),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(64, 1),
-        )
-
-    def forward(self, x):
-        out, _ = self.lstm(x)
-        last = out[:, -1, :]
-        return self.head(last).squeeze(-1)
+MARKET_DATA_COLS = [
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "pre_close",
+    "vol",
+    "amount",
+]
 
 
 def read_all_stock_data(data_dir: Path) -> pd.DataFrame:
@@ -74,6 +62,13 @@ def read_all_stock_data(data_dir: Path) -> pd.DataFrame:
         dfs.append(df)
 
     data = pd.concat(dfs, ignore_index=True)
+    missing_cols = [col for col in MARKET_DATA_COLS if col not in data.columns]
+    if missing_cols:
+        raise ValueError(
+            f"Market data in {data_dir} is missing required columns: {missing_cols}. "
+            "Use daily OHLCV files, not stock-status or stock-pool files."
+        )
+
     data["trade_date"] = pd.to_datetime(data["trade_date"].astype(str))
     data = data.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
     return data
@@ -165,6 +160,11 @@ def apply_train_scaler(df: pd.DataFrame, scaler_path: Path) -> pd.DataFrame:
 def build_latest_sequences(df: pd.DataFrame, signal_date, seq_len: int):
     xs = []
     rows = []
+    stock_count = int(df["ts_code"].nunique())
+    signal_rows = df[df["trade_date"] == signal_date]
+    signal_stock_count = int(signal_rows["ts_code"].nunique())
+    enough_feature_history = 0
+    signal_window_count = 0
 
     for ts_code, sub in df.groupby("ts_code"):
         sub = sub[sub["trade_date"] <= signal_date].sort_values("trade_date")
@@ -172,10 +172,12 @@ def build_latest_sequences(df: pd.DataFrame, signal_date, seq_len: int):
 
         if len(sub) < seq_len:
             continue
+        enough_feature_history += 1
 
         last = sub.tail(seq_len)
         if last["trade_date"].iloc[-1] != signal_date:
             continue
+        signal_window_count += 1
 
         x = last[FEATURE_COLS].to_numpy(dtype=np.float32)
         xs.append(x)
@@ -188,19 +190,22 @@ def build_latest_sequences(df: pd.DataFrame, signal_date, seq_len: int):
         )
 
     if not xs:
-        raise RuntimeError("No valid sequence generated. Check latest data and feature columns.")
+        date_text = pd.to_datetime(signal_date).strftime("%Y-%m-%d")
+        unique_dates = int(df["trade_date"].nunique())
+        raise RuntimeError(
+            "No valid sequence generated. "
+            f"signal_date={date_text}, seq_len={seq_len}, stocks={stock_count}, "
+            f"trade_dates={unique_dates}, stocks_on_signal_date={signal_stock_count}, "
+            f"stocks_with_{seq_len}_valid_feature_rows={enough_feature_history}, "
+            f"stocks_with_signal_window={signal_window_count}. "
+            "Provide OHLCV history through the signal date; rolling features need "
+            "roughly 30+ trading days per stock before the final sequence is built."
+        )
 
     return np.stack(xs), pd.DataFrame(rows)
 
 
 def load_model(checkpoint_path: Path, device: str):
-    model = LSTMRegressor(
-        input_dim=len(FEATURE_COLS),
-        hidden_size=128,
-        num_layers=2,
-        dropout=0.2,
-    )
-
     ckpt = torch.load(checkpoint_path, map_location=device)
 
     if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
@@ -210,7 +215,20 @@ def load_model(checkpoint_path: Path, device: str):
     else:
         state = ckpt
 
-    model.load_state_dict(state, strict=False)
+    if not isinstance(state, dict):
+        raise TypeError(f"Unsupported checkpoint format: {checkpoint_path}")
+
+    cfg_train = ckpt.get("config", {}).get("train", {}) if isinstance(ckpt, dict) else {}
+    input_dim = ckpt.get("input_dim", len(FEATURE_COLS)) if isinstance(ckpt, dict) else len(FEATURE_COLS)
+    model = LSTMRegressor(
+        input_dim=input_dim,
+        hidden_size=cfg_train.get("hidden_size", 128),
+        num_layers=cfg_train.get("num_layers", 2),
+        dropout=cfg_train.get("dropout", 0.2),
+        bidirectional=cfg_train.get("bidirectional", False),
+    )
+
+    model.load_state_dict(state)
     model.to(device)
     model.eval()
     return model
