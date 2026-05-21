@@ -1,83 +1,180 @@
-# =========================
-# Large datasets
-# =========================
-Datasets/
-data/
-dataset/
-datasets/
-*.parquet
-*.pkl
-*.pickle
-*.h5
-*.hdf5
-*.npy
-*.npz
+# ============================================================
+# Project: Deep Learning Stock Prediction and Trading Baseline
+# Rule:
+#   - Upload source code, configs, README, result summaries, figures, and model weights.
+#   - Do NOT upload raw / processed datasets, cache files, archives, or very large intermediate files.
+# ============================================================
 
-# =========================
-# Model checkpoints
-# =========================
-*.pt
-*.pth
-*.ckpt
-*.onnx
-outputs*/models/
-checkpoints/
-weights/
 
-# =========================
-# Large prediction files
-# =========================
-outputs*/predictions/
-outputs*/**/t1_signal_predictions.csv
-outputs*/**/realistic_signal_predictions*.csv
-outputs*/**/*positions*.csv
-outputs*/**/*trades*.csv
-outputs*/**/random_*_sample_nav.csv
-outputs*/**/strategy_metrics_all_runs*.csv
-
-# =========================
-# Python cache
-# =========================
+# ============================================================
+# Python cache / runtime cache
+# ============================================================
 __pycache__/
+**/__pycache__/
 *.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .ipynb_checkpoints/
 
-# =========================
-# Logs / temp
-# =========================
+
+# ============================================================
+# Virtual environments
+# ============================================================
+.venv/
+venv/
+env/
+ENV/
+conda/
+miniconda/
+anaconda/
+
+
+# ============================================================
+# OS / IDE files
+# ============================================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+
+# ============================================================
+# Logs / temporary files
+# ============================================================
 *.log
 logs/
 tmp/
 temp/
-wandb/
-runs/
+.cache/
 
-# =========================
-# Environment
-# =========================
-.env
-.venv/
-venv/
-conda-meta/
 
-# =========================
-# Editor / OS
-# =========================
-.vscode/
-.idea/
-.DS_Store
+# ============================================================
+# Raw / processed datasets
+# Your tree has:
+#   Datasets/basic_filtered.csv
+#   Datasets/processed/*.parquet
+#   Datasets/stock_features/*.csv
+# These should NOT be uploaded.
+# ============================================================
+Datasets/
+datasets/
+dataset/
 
-# =========================
-# Keep useful small result files
-# =========================
-!outputs*/
+data/raw/
+data/original/
+data/download/
+data/downloads/
+data/daily_stock_data/
+data/market/
+data/news/
+data/fundamental/
+data/moneyflow/
+
+
+# ============================================================
+# Large intermediate data formats
+# Keep source/result csv files unless explicitly excluded below.
+# ============================================================
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.npy
+*.npz
+
+
+# ============================================================
+# Archives / compressed packages
+# Your tree has dlinear_addon_files.zip, do not upload it.
+# ============================================================
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+
+
+# ============================================================
+# Daily local trading runtime outputs
+# These are generated during simulation and may change every day.
+# Keep them local unless you intentionally want to submit examples.
+# ============================================================
+outputs_daily/
+outputs_trade_plan/
+
+
+# ============================================================
+# Very large per-sample prediction files
+# These are usually not necessary for GitHub/report reproduction.
+# Keep summary metrics, figures, NAV, strategy summaries, and model weights.
+# ============================================================
+outputs*/predictions/
+outputs*/**/valid_predictions*.csv
+outputs*/**/backtest_predictions.csv
+outputs*/**/realistic_signal_predictions*.csv
+outputs*/**/t1_signal_predictions.csv
+
+
+# ============================================================
+# Keep important project files
+# ============================================================
+!README.md
+!requirements.txt
+!*.py
+!configs/
+!configs/*.json
+!src/
+!src/*.py
+
+
+# ============================================================
+# Keep result folders and lightweight experiment summaries
+# ============================================================
+!outputs/
+!outputs_*/
+!outputs_benchmark/
+
 !outputs*/figures/
-!outputs*/figures/*.png
-!outputs*/figures/**/*.png
+!outputs*/figures/**
 !outputs*/**/*.png
 !outputs*/**/*.json
 !outputs*/**/strategy_metrics_summary*.csv
+!outputs*/**/strategy_metrics_all_runs*.csv
 !outputs*/**/monthly_ic*.csv
-!outputs*/training_history*.csv
-!outputs*/metrics_valid*.json
-!outputs*/preprocess_state*.json
+!outputs*/**/training_history*.csv
+!outputs*/**/nav_curve.csv
+!outputs*/**/*_nav.csv
+!outputs*/**/*_trades.csv
+!outputs*/**/*_positions.csv
+!outputs*/**/trade_records.csv
+!outputs*/**/position_records.csv
+
+!outputs_benchmark/**
+!outputs_benchmark/**/*.csv
+!outputs_benchmark/**/*.png
+
+
+# ============================================================
+# IMPORTANT:
+# Model weights are intentionally kept.
+# Use Git LFS if they are large.
+# ============================================================
+!*.pt
+!*.pth
+!*.ckpt
+!*.safetensors
+!*.onnx
+!*.bin
+
+!outputs*/models/
+!outputs*/models/**
+!outputs*/**/models/
+!outputs*/**/models/**

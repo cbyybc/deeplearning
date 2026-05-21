@@ -4,3 +4,4 @@ torch
 scikit-learn
 matplotlib
 tqdm
+streamlit
