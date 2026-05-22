@@ -87,11 +87,35 @@ def save_uploaded_files(files: Iterable, out_dir: Path) -> list[Path]:
 
 
 def find_data_dir_from_upload(saved_paths: list[Path], fallback_dir: Path) -> Path:
+    market_files = [
+        p for p in saved_paths
+        if p.is_file() and p.suffix.lower() in {".csv", ".parquet"}
+    ]
+    # Keep sibling latest-day files together with zip-extracted history.
+    if market_files:
+        return fallback_dir
     # 如果上传了 zip，优先使用解压目录；否则使用保存目录。
     dirs = [p for p in saved_paths if p.is_dir()]
     if dirs:
         return dirs[-1]
     return fallback_dir
+
+
+def sync_market_files(saved_paths: list[Path], market_data_dir: Path) -> list[Path]:
+    ensure_dir(market_data_dir)
+    synced: list[Path] = []
+    market_suffixes = {".csv", ".parquet"}
+
+    for path in saved_paths:
+        sources = path.rglob("*") if path.is_dir() else [path]
+        for source in sources:
+            if not source.is_file() or source.suffix.lower() not in market_suffixes:
+                continue
+            dst = market_data_dir / source.name
+            shutil.copy2(source, dst)
+            synced.append(dst)
+
+    return synced
 
 
 def run_command(cmd: list[str], cwd: Path) -> tuple[int, str]:
@@ -105,6 +129,16 @@ def run_command(cmd: list[str], cwd: Path) -> tuple[int, str]:
         errors="replace",
     )
     return proc.returncode, proc.stdout
+
+
+def prediction_error_hint(output: str) -> str:
+    if "missing required columns" in output or "Column not found" in output:
+        return "行情文件缺少预测所需的 OHLCV 列。请确认包含 trade_date/open/high/low/close/pre_close/vol/amount。"
+    if "No valid sequence generated" in output:
+        return "没有股票构造出有效序列。请提供截至 signal_date 的历史日行情，通常每只股票至少准备最近 30 个交易日。"
+    if "size mismatch" in output and "state_dict" in output:
+        return "模型权重与预测脚本中的模型结构不一致。请使用与当前仓库代码匹配的 checkpoint。"
+    return ""
 
 
 def csv_download_button(df: pd.DataFrame, label: str, filename: str):
@@ -131,10 +165,13 @@ def normalize_positions_df(df: pd.DataFrame) -> pd.DataFrame:
         st.warning("当前持仓文件缺少 ts_code 列，已返回空持仓。")
         return pd.DataFrame(columns=cols)
     out = df.copy()
-    out["ts_code"] = out["ts_code"].astype(str)
     for c in cols:
         if c not in out.columns:
             out[c] = ""
+    out["ts_code"] = out["ts_code"].fillna("").astype(str)
+    out["buy_date"] = out["buy_date"].fillna("").astype(str)
+    out["shares"] = pd.to_numeric(out["shares"], errors="coerce")
+    out["weight"] = pd.to_numeric(out["weight"], errors="coerce")
     return out[cols]
 
 
@@ -211,7 +248,7 @@ with st.sidebar:
 
     st.divider()
     st.subheader("预测参数")
-    data_dir_manual = st.text_input("行情数据目录", str(project_root / "../Datasets/stocks"))
+    data_dir_manual = st.text_input("行情数据目录", str(project_root / "data" / "local_market_data"))
     checkpoint = st.text_input(
         "模型权重 checkpoint",
         str(project_root / "outputs_lstm_seq10_oo_e60" / "models" / "best_lstm.pt"),
@@ -269,6 +306,7 @@ with tab_data:
     st.write("可以上传 csv/parquet/zip，也可以直接使用左侧填写的行情数据目录。zip 会自动解压。")
 
     upload_dir = ensure_dir(project_root / "data" / "daily_uploads" / date.today().strftime("%Y%m%d"))
+    cumulative_market_dir = ensure_dir(project_root / "data" / "local_market_data")
     uploaded = st.file_uploader(
         "上传每日最新数据文件",
         type=["csv", "parquet", "zip"],
@@ -279,8 +317,11 @@ with tab_data:
 
     if uploaded:
         saved_paths = save_uploaded_files(uploaded, upload_dir)
-        selected_data_dir = find_data_dir_from_upload(saved_paths, upload_dir)
+        synced_market_files = sync_market_files(saved_paths, cumulative_market_dir)
+        selected_data_dir = cumulative_market_dir if synced_market_files else find_data_dir_from_upload(saved_paths, upload_dir)
         st.success(f"已保存上传文件到：{upload_dir}")
+        if synced_market_files:
+            st.success(f"已同步 {len(synced_market_files)} 个行情文件到累计目录：{cumulative_market_dir}")
         st.info(f"本次将使用数据目录：{selected_data_dir}")
         st.session_state["selected_data_dir"] = str(selected_data_dir)
         st.write("已保存/解压的路径：")
@@ -399,6 +440,11 @@ with tab_predict:
                 st.success("预测完成。")
             else:
                 st.error(f"预测脚本运行失败，返回码：{code}")
+
+    if "output" in locals() and "code" in locals() and code != 0:
+        hint = prediction_error_hint(output)
+        if hint:
+            st.warning(hint)
 
     cand_df = read_csv_if_exists(latest_candidates_path)
     if not cand_df.empty:

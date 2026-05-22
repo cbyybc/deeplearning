@@ -69,6 +69,7 @@ data/original/
 data/download/
 data/downloads/
 data/daily_stock_data/
+data/local_market_data/
 data/market/
 data/news/
 data/fundamental/
