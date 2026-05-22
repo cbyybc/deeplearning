@@ -45,7 +45,7 @@ MARKET_DATA_COLS = [
 
 
 def read_all_stock_data(data_dir: Path) -> pd.DataFrame:
-    files = sorted(list(data_dir.glob("*.parquet")) + list(data_dir.glob("*.csv")))
+    files = sorted(list(data_dir.rglob("*.parquet")) + list(data_dir.rglob("*.csv")))
     if not files:
         raise FileNotFoundError(f"No csv/parquet files found in {data_dir}")
 
