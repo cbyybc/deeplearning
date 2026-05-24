@@ -1,7 +1,9 @@
 numpy
 pandas
+pyarrow
 torch
 scikit-learn
+scipy
 matplotlib
 tqdm
 streamlit

@@ -2,6 +2,7 @@ import os
 import glob
 import gc
 import warnings
+from bisect import bisect_right
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ warnings.filterwarnings("ignore")
 
 BASIC_PATH = "../Datasets/basic.csv"
 DAILY_DIR = "../Datasets/daily"
+STOCK_ST_DIR = "../Datasets/stock_st"
 
 SAVE_ROOT = "Datasets"
 PROCESSED_DIR = os.path.join(SAVE_ROOT, "processed")
@@ -35,7 +37,7 @@ def filter_stock(basic_df: pd.DataFrame) -> pd.DataFrame:
     """
     过滤股票池：
     1. 剔除北交所
-    2. 剔除 ST
+    2. 剔除当前名称含 ST / 退市的股票
     3. 剔除 2019-01-01 之后上市的股票
     """
     df = basic_df.copy()
@@ -44,9 +46,9 @@ def filter_stock(basic_df: pd.DataFrame) -> pd.DataFrame:
     if "market" in df.columns:
         df = df[~df["market"].astype(str).str.contains("北交所", na=False)]
 
-    # 剔除 ST
+    # 剔除当前名称含 ST / 退市的股票。历史每日 ST 状态会在读取 daily 时继续按 stock_st 过滤。
     if "name" in df.columns:
-        df = df[~df["name"].astype(str).str.contains("ST", na=False)]
+        df = df[~df["name"].astype(str).str.contains(r"ST|\*ST|退市", case=False, na=False, regex=True)]
 
     # 过滤上市时间
     if "list_date" in df.columns:
@@ -64,6 +66,68 @@ def filter_stock(basic_df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def load_stock_st_by_date(stock_st_dir: str) -> tuple[dict[int, set[str]], list[int]]:
+    """
+    读取每日 stock_st 列表，用于逐交易日过滤 ST 股票。
+
+    stock_st 数据自 2016 年 8 月起提供。对于任一 daily 交易日，只使用
+    trade_date <= 当前交易日的最新 ST 列表，避免用到未来状态。
+    """
+    if not os.path.exists(stock_st_dir):
+        raise FileNotFoundError(
+            f"找不到 stock_st 目录: {stock_st_dir}\n"
+            "请从数据包的其它数据中下载 stock_st/，训练特征工程需要它来过滤每日 ST 股票。"
+        )
+
+    file_list = sorted(glob.glob(os.path.join(stock_st_dir, "*.csv")))
+    if len(file_list) == 0:
+        raise FileNotFoundError(f"stock_st 目录中没有 CSV 文件: {stock_st_dir}")
+
+    by_date: dict[int, set[str]] = {}
+
+    for file_path in file_list:
+        try:
+            st_df = pd.read_csv(file_path, usecols=lambda c: c in {"ts_code", "trade_date"})
+        except Exception as e:
+            print(f"读取 stock_st 失败: {file_path}, 错误: {e}")
+            continue
+
+        missing = {"ts_code", "trade_date"} - set(st_df.columns)
+        if missing:
+            print(f"跳过 stock_st 文件，缺少列 {missing}: {file_path}")
+            continue
+
+        st_df = st_df.dropna(subset=["ts_code", "trade_date"]).copy()
+        st_df["trade_date"] = pd.to_numeric(st_df["trade_date"], errors="coerce")
+        st_df = st_df.dropna(subset=["trade_date"])
+        st_df["trade_date"] = st_df["trade_date"].astype("int32")
+        st_df["ts_code"] = st_df["ts_code"].astype(str)
+
+        for trade_date, g in st_df.groupby("trade_date"):
+            by_date.setdefault(int(trade_date), set()).update(g["ts_code"].tolist())
+
+    if not by_date:
+        raise ValueError(f"没有从 stock_st 目录读取到有效 ST 列表: {stock_st_dir}")
+
+    dates = sorted(by_date)
+    print(
+        f"已读取每日 ST 列表: dates={len(dates)}, "
+        f"range={dates[0]}-{dates[-1]}"
+    )
+    return by_date, dates
+
+
+def latest_st_codes_for_date(
+    trade_date: int,
+    stock_st_by_date: dict[int, set[str]],
+    stock_st_dates: list[int],
+) -> set[str]:
+    idx = bisect_right(stock_st_dates, int(trade_date)) - 1
+    if idx < 0:
+        return set()
+    return stock_st_by_date.get(stock_st_dates[idx], set())
+
+
 # ============================================================
 # 2. 一次性读取所有 daily CSV
 # ============================================================
@@ -71,6 +135,8 @@ def filter_stock(basic_df: pd.DataFrame) -> pd.DataFrame:
 def load_all_daily(
     daily_dir: str,
     valid_codes: set,
+    stock_st_by_date: dict[int, set[str]],
+    stock_st_dates: list[int],
     usecols=None
 ) -> pd.DataFrame:
     """
@@ -115,6 +181,14 @@ def load_all_daily(
 
             # 过滤股票池
             df_day = df_day[df_day["ts_code"].isin(valid_codes)]
+
+            if "trade_date" in df_day.columns:
+                day_dates = pd.to_numeric(df_day["trade_date"], errors="coerce").dropna().astype("int32")
+                for trade_date in day_dates.unique():
+                    st_codes = latest_st_codes_for_date(trade_date, stock_st_by_date, stock_st_dates)
+                    if st_codes:
+                        mask = (df_day["trade_date"].astype(str) == str(int(trade_date))) & df_day["ts_code"].isin(st_codes)
+                        df_day = df_day[~mask]
 
             if df_day.empty:
                 continue
@@ -379,7 +453,17 @@ def main():
     valid_codes = set(basic_filtered["ts_code"].tolist())
 
     # ------------------------------------------------------------
-    # 5.2 读取所有 daily
+    # 5.2 读取每日 stock_st
+    # ------------------------------------------------------------
+
+    print("=" * 80)
+    print("开始读取每日 ST 股票列表")
+    print("=" * 80)
+
+    stock_st_by_date, stock_st_dates = load_stock_st_by_date(STOCK_ST_DIR)
+
+    # ------------------------------------------------------------
+    # 5.3 读取所有 daily
     # ------------------------------------------------------------
 
     print("=" * 80)
@@ -388,14 +472,16 @@ def main():
 
     df_daily = load_all_daily(
         daily_dir=DAILY_DIR,
-        valid_codes=valid_codes
+        valid_codes=valid_codes,
+        stock_st_by_date=stock_st_by_date,
+        stock_st_dates=stock_st_dates,
     )
 
     print("全市场数据 shape:", df_daily.shape)
     print(df_daily.head())
 
     # ------------------------------------------------------------
-    # 5.3 特征工程
+    # 5.4 特征工程
     # ------------------------------------------------------------
 
     print("=" * 80)
@@ -415,7 +501,7 @@ def main():
     print(df_feat.head())
 
     # ------------------------------------------------------------
-    # 5.4 保存
+    # 5.5 保存
     # ------------------------------------------------------------
 
     print("=" * 80)

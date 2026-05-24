@@ -47,6 +47,8 @@ NAME_COLS = ["name", "stock_name", "security_name", "display_name", "股票名�
 EXCHANGE_COLS = ["exchange", "market", "board", "list_board", "交易所", "市场", "板块"]
 ST_FLAG_COLS = ["is_st", "st", "isST", "special_treatment", "risk_warning", "是否ST"]
 STATUS_COLS = ["list_status", "status", "trade_status", "上市状态", "交易状态"]
+BASIC_REQUIRED_COLS = ["ts_code", "name", "market"]
+ST_REQUIRED_COLS = ["ts_code", "trade_date"]
 
 
 def read_all_stock_data(data_dir: Path) -> pd.DataFrame:
@@ -96,23 +98,61 @@ def _bad_status(s: pd.Series) -> pd.Series:
     return text.isin({"d", "delist", "delisted", "退市", "暂停上市", "终止上市", "停牌"})
 
 
-def read_stock_meta(path: Path | None) -> pd.DataFrame | None:
-    if path is None:
-        return None
+def read_table(path: Path, label: str) -> pd.DataFrame:
     if not path.exists():
-        raise FileNotFoundError(f"Stock metadata file not found: {path}")
+        raise FileNotFoundError(f"{label} file not found: {path}")
 
     if path.suffix.lower() == ".parquet":
-        meta = pd.read_parquet(path)
+        table = pd.read_parquet(path)
     else:
-        meta = pd.read_csv(path)
+        table = pd.read_csv(path)
 
-    if "ts_code" not in meta.columns:
-        raise ValueError(f"Stock metadata must contain column ts_code: {path}")
+    return table
 
-    meta = meta.copy()
-    meta["ts_code"] = meta["ts_code"].astype(str)
-    return meta.drop_duplicates("ts_code", keep="last")
+
+def read_basic_csv(path: Path) -> pd.DataFrame:
+    basic = read_table(path, "basic.csv")
+    missing = [col for col in BASIC_REQUIRED_COLS if col not in basic.columns]
+    if missing:
+        raise ValueError(f"basic.csv is missing required columns {missing}: {path}")
+
+    basic = basic.copy()
+    basic["ts_code"] = basic["ts_code"].astype(str)
+    return basic.drop_duplicates("ts_code", keep="last")
+
+
+def read_stock_st_file(path: Path, signal_date: pd.Timestamp) -> pd.DataFrame:
+    stock_st = read_table(path, "stock_st")
+    missing = [col for col in ST_REQUIRED_COLS if col not in stock_st.columns]
+    if missing:
+        raise ValueError(f"stock_st file is missing required columns {missing}: {path}")
+
+    stock_st = stock_st.copy()
+    stock_st["ts_code"] = stock_st["ts_code"].astype(str)
+    stock_st["trade_date"] = pd.to_datetime(stock_st["trade_date"].astype(str))
+    stock_st = stock_st[stock_st["trade_date"] <= signal_date]
+    if stock_st.empty:
+        print(f"stock_st filter date: no ST rows on or before {signal_date.date()}")
+        return stock_st
+
+    effective_date = stock_st["trade_date"].max()
+    stock_st = stock_st[stock_st["trade_date"] == effective_date]
+    print(f"stock_st filter date: using {effective_date.date()} for signal_date {signal_date.date()}")
+    return stock_st.drop_duplicates("ts_code", keep="last")
+
+
+def build_required_stock_meta(
+    basic_csv: Path,
+    stock_st_file: Path,
+    signal_date: pd.Timestamp,
+) -> pd.DataFrame:
+    basic = read_basic_csv(basic_csv)
+    stock_st = read_stock_st_file(stock_st_file, signal_date)
+
+    meta = basic.copy()
+    st_codes = set(stock_st["ts_code"].astype(str))
+    meta["is_st"] = meta["ts_code"].astype(str).isin(st_codes).astype(int)
+    return meta
 
 
 def attach_stock_meta(df: pd.DataFrame, stock_meta: pd.DataFrame | None) -> pd.DataFrame:
@@ -148,8 +188,7 @@ def attach_stock_meta(df: pd.DataFrame, stock_meta: pd.DataFrame | None) -> pd.D
 
 def filter_stock_pool(
     df: pd.DataFrame,
-    stock_meta: pd.DataFrame | None = None,
-    allow_missing_stock_meta: bool = False,
+    stock_meta: pd.DataFrame,
 ) -> pd.DataFrame:
     df = attach_stock_meta(df, stock_meta)
     before_rows = len(df)
@@ -170,12 +209,11 @@ def filter_stock_pool(
 
     has_flag_col = any(col in df.columns for col in ST_FLAG_COLS)
     has_status_col = any(col in df.columns for col in STATUS_COLS)
-    if name_col is None and not has_flag_col and not has_status_col and not allow_missing_stock_meta:
+    if name_col is None or not has_flag_col:
         raise ValueError(
-            "Cannot guarantee ST/delisted stock filtering because market data has no "
-            "stock name/status columns and --stock_meta was not provided. Pass a stock "
-            "metadata CSV/Parquet with ts_code plus name/is_st/list_status/exchange "
-            "columns, or explicitly add --allow_missing_stock_meta to run with only .BJ filtering."
+            "Cannot guarantee ST stock filtering. Prediction now requires --basic_csv "
+            "with ts_code/name/market and --stock_st with ts_code/trade_date so ST names, "
+            "the daily ST list, and Beijing Stock Exchange stocks can be filtered."
         )
 
     for flag_col in ST_FLAG_COLS:
@@ -193,12 +231,6 @@ def filter_stock_pool(
         f"rows {before_rows}->{len(df)}, stocks {before_stocks}->{after_stocks}, "
         f"removed_stocks={before_stocks - after_stocks}"
     )
-    if name_col is None and not has_flag_col and not has_status_col:
-        print(
-            "WARNING: no stock name/status metadata was provided; prediction can only "
-            "filter .BJ codes, not ST names that are absent from market data."
-        )
-
     return df
 
 
@@ -460,15 +492,16 @@ def main():
     parser.add_argument("--scaler", type=str, required=True)
     parser.add_argument("--positions", type=str, default="data/current_positions.csv")
     parser.add_argument(
-        "--stock_meta",
+        "--basic_csv",
         type=str,
-        default=None,
-        help="可选股票基础信息/状态表，需含 ts_code，可含 name/is_st/list_status/exchange 等列用于过滤 ST、退市和北交所股票。",
+        required=True,
+        help="必填 basic.csv，需含 ts_code/name/market，用于识别股票名称和北交所股票。",
     )
     parser.add_argument(
-        "--allow_missing_stock_meta",
-        action="store_true",
-        help="允许在没有股票名称/状态表时继续预测。此时只能过滤 .BJ，无法保证过滤 ST/退市股票。",
+        "--stock_st",
+        type=str,
+        required=True,
+        help="必填每日 stock_st 文件，需含 ts_code/trade_date，用于按 signal_date 过滤 ST 股票。",
     )
     parser.add_argument("--out_dir", type=str, default="outputs_daily")
     parser.add_argument("--seq_len", type=int, default=10)
@@ -488,19 +521,19 @@ def main():
         device = "cpu"
 
     df = read_all_stock_data(data_dir)
-    stock_meta = read_stock_meta(Path(args.stock_meta)) if args.stock_meta else None
-    df = filter_stock_pool(
-        df,
-        stock_meta=stock_meta,
-        allow_missing_stock_meta=args.allow_missing_stock_meta,
-    )
-    df = add_features(df)
-    df = apply_train_scaler(df, Path(args.scaler))
-
     if args.signal_date is None:
         signal_date = df["trade_date"].max()
     else:
         signal_date = pd.to_datetime(args.signal_date)
+
+    stock_meta = build_required_stock_meta(
+        basic_csv=Path(args.basic_csv),
+        stock_st_file=Path(args.stock_st),
+        signal_date=signal_date,
+    )
+    df = filter_stock_pool(df, stock_meta=stock_meta)
+    df = add_features(df)
+    df = apply_train_scaler(df, Path(args.scaler))
 
     if args.trade_date is None:
         # 注意：这里默认只是写成下一天。
