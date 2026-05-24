@@ -179,3 +179,15 @@ outputs*/**/t1_signal_predictions.csv
 !outputs*/models/**
 !outputs*/**/models/
 !outputs*/**/models/**
+
+
+# ============================================================
+# Local daily trading data and scratch outputs stay local.
+# Keep these rules after the result-folder exceptions above so
+# generated daily files are not accidentally re-included.
+# ============================================================
+data/
+outputs_daily/
+outputs_trade_plan/
+outputs_daily_codex_*/
+outputs_daily_local_market_test/
