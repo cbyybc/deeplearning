@@ -96,22 +96,22 @@ http://localhost:8501
 
 请先在左侧侧边栏逐项核对：
 
-| 项目 | 推荐值 |
-|---|---|
-| 项目根目录 | 当前 clone 下来的仓库根目录 |
-| 每日预测脚本 | `src/predict_daily.py` |
-| 交易计划脚本 | `src/make_trade_plan.py` |
-| 当前持仓文件 | `data/current_positions.csv` |
-| 预测输出目录 | `outputs_daily` |
-| 交易计划输出目录 | `outputs_trade_plan` |
-| 目标持仓 TopK | `10` |
-| 每日换仓 DropK | `2` |
-| 模型权重 checkpoint | `outputs_lstm_seq10_oo_e60/models/best_lstm.pt` |
-| 训练集预处理参数 | `outputs_lstm_seq10_oo_e60/preprocess_state_lstm.json` |
-| `basic.csv（必填）` | 下载的基础数据 `basic.csv` |
-| `每日 stock_st 文件（必填）` | `stock_st/` 目录下与信号日对应的每日 ST 文件 |
-| `seq_len` | `10` |
-| `device` | 有可用 CUDA 可选 `cuda`，否则选 `cpu` |
+| 项目                           | 推荐值                                                   |
+| ------------------------------ | -------------------------------------------------------- |
+| 项目根目录                     | 当前 clone 下来的仓库根目录                              |
+| 每日预测脚本                   | `src/predict_daily.py`                                 |
+| 交易计划脚本                   | `src/make_trade_plan.py`                               |
+| 当前持仓文件                   | `data/current_positions.csv`                           |
+| 预测输出目录                   | `outputs_daily`                                        |
+| 交易计划输出目录               | `outputs_trade_plan`                                   |
+| 目标持仓 TopK                  | `10`                                                   |
+| 每日换仓 DropK                 | `2`                                                    |
+| 模型权重 checkpoint            | `outputs_lstm_seq10_oo_e60/models/best_lstm.pt`        |
+| 训练集预处理参数               | `outputs_lstm_seq10_oo_e60/preprocess_state_lstm.json` |
+| `basic.csv（必填）`          | 下载的基础数据 `basic.csv`                             |
+| `每日 stock_st 文件（必填）` | `stock_st/` 目录下与信号日对应的每日 ST 文件           |
+| `seq_len`                    | `10`                                                   |
+| `device`                     | 有可用 CUDA 可选 `cuda`，否则选 `cpu`                |
 
 ## 4. 准备本地累计历史行情目录
 
@@ -259,11 +259,11 @@ data/stock_status/stock_st/20260522.csv
 
 请把三类文件分清楚：
 
-| 文件 | 用途 | 放在哪里 |
-|---|---|---|
-| `daily/` 日行情 CSV/Parquet | 计算特征和预测 | `data/local_market_data/` |
-| `basic.csv` | 股票名称、市场类型过滤 | `data/stock_status/basic.csv` |
-| `stock_st/YYYYMMDD.csv` | 每日 ST 名单过滤 | `data/stock_status/stock_st/` |
+| 文件                          | 用途                   | 放在哪里                        |
+| ----------------------------- | ---------------------- | ------------------------------- |
+| `daily/` 日行情 CSV/Parquet | 计算特征和预测         | `data/local_market_data/`     |
+| `basic.csv`                 | 股票名称、市场类型过滤 | `data/stock_status/basic.csv` |
+| `stock_st/YYYYMMDD.csv`     | 每日 ST 名单过滤       | `data/stock_status/stock_st/` |
 
 `basic.csv` 和 `stock_st` 不要上传到“行情数据目录”，否则会被当成行情文件读取并报缺少 `open/high/low/close` 等列。
 
@@ -305,12 +305,12 @@ ts_code,buy_date,shares,weight
 
 字段含义：
 
-| 字段 | 手动填写要求 |
-|---|---|
-| `ts_code` | 必填，股票代码必须正确 |
-| `buy_date` | 建议填写真实买入日期 |
-| `shares` | 建议填写真实持股数 |
-| `weight` | 建议填写当前或目标仓位比例 |
+| 字段         | 手动填写要求               |
+| ------------ | -------------------------- |
+| `ts_code`  | 必填，股票代码必须正确     |
+| `buy_date` | 建议填写真实买入日期       |
+| `shares`   | 建议填写真实持股数         |
+| `weight`   | 建议填写当前或目标仓位比例 |
 
 交易计划主要依赖 `ts_code` 判断当前持仓。`buy_date`、`shares`、`weight` 用于你自己复核和后续记录。
 
@@ -386,12 +386,12 @@ trade_date  = 下一交易日执行交易
 
 请特别注意：
 
-| 情况 | 正确操作 |
-|---|---|
-| 周一到周四盘后出信号 | 一般设置为下一自然日交易日 |
-| 周五盘后出信号 | 设置为下周一，不能写周六 |
-| 节假日前盘后出信号 | 设置为节后首个交易日 |
-| 当天文件还不是完整日线 | 不要提前把当天设为信号日 |
+| 情况                   | 正确操作                   |
+| ---------------------- | -------------------------- |
+| 周一到周四盘后出信号   | 一般设置为下一自然日交易日 |
+| 周五盘后出信号         | 设置为下周一，不能写周六   |
+| 节假日前盘后出信号     | 设置为节后首个交易日       |
+| 当天文件还不是完整日线 | 不要提前把当天设为信号日   |
 
 生成交易计划前，务必确认：
 
