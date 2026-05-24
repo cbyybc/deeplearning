@@ -132,6 +132,8 @@ def run_command(cmd: list[str], cwd: Path) -> tuple[int, str]:
 
 
 def prediction_error_hint(output: str) -> str:
+    if "Cannot guarantee ST/delisted stock filtering" in output:
+        return "预测已停止：行情文件没有股票名称或状态列，无法保证过滤 ST/退市股票。请在侧边栏填写股票状态表，或确认风险后在命令行显式允许未校验股票池。"
     if "missing required columns" in output or "Column not found" in output:
         return "行情文件缺少预测所需的 OHLCV 列。请确认包含 trade_date/open/high/low/close/pre_close/vol/amount。"
     if "No valid sequence generated" in output:
@@ -256,6 +258,11 @@ with st.sidebar:
     scaler = st.text_input(
         "训练集预处理参数",
         str(project_root / "outputs_lstm_seq10_oo_e60" / "preprocess_state_lstm.json"),
+    )
+    stock_meta = st.text_input(
+        "股票状态表，用于过滤 ST",
+        "",
+        help="可填写含 ts_code/name/is_st/list_status/exchange 等列的 CSV/Parquet，用于预测前过滤 ST、退市和北交所股票。",
     )
     seq_len = st.number_input("seq_len", min_value=1, max_value=120, value=10, step=1)
     signal_date = st.text_input("signal_date，可留空自动识别最新日期", "")
@@ -424,6 +431,8 @@ with tab_predict:
         "--device",
         device,
     ]
+    if stock_meta.strip():
+        cmd.extend(["--stock_meta", str(to_path(stock_meta.strip()))])
     if signal_date.strip():
         cmd.extend(["--signal_date", signal_date.strip()])
 

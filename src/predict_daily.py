@@ -43,6 +43,11 @@ MARKET_DATA_COLS = [
     "amount",
 ]
 
+NAME_COLS = ["name", "stock_name", "security_name", "display_name", "股票名称", "名称"]
+EXCHANGE_COLS = ["exchange", "market", "board", "list_board", "交易所", "市场", "板块"]
+ST_FLAG_COLS = ["is_st", "st", "isST", "special_treatment", "risk_warning", "是否ST"]
+STATUS_COLS = ["list_status", "status", "trade_status", "上市状态", "交易状态"]
+
 
 def read_all_stock_data(data_dir: Path) -> pd.DataFrame:
     files = sorted(list(data_dir.rglob("*.parquet")) + list(data_dir.rglob("*.csv")))
@@ -74,14 +79,125 @@ def read_all_stock_data(data_dir: Path) -> pd.DataFrame:
     return data
 
 
-def filter_stock_pool(df: pd.DataFrame) -> pd.DataFrame:
-    # 过滤北交所：常见代码后缀 .BJ
-    df = df[~df["ts_code"].astype(str).str.endswith(".BJ")].copy()
+def _first_existing_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    for col in candidates:
+        if col in df.columns:
+            return col
+    return None
 
-    # 如果你的数据里有 name 字段，可以进一步过滤 ST
-    if "name" in df.columns:
-        name = df["name"].astype(str)
-        df = df[~name.str.contains("ST", case=False, na=False)].copy()
+
+def _truthy_flag(s: pd.Series) -> pd.Series:
+    text = s.fillna("").astype(str).str.strip().str.lower()
+    return text.isin({"1", "true", "t", "yes", "y", "是", "st"})
+
+
+def _bad_status(s: pd.Series) -> pd.Series:
+    text = s.fillna("").astype(str).str.strip().str.lower()
+    return text.isin({"d", "delist", "delisted", "退市", "暂停上市", "终止上市", "停牌"})
+
+
+def read_stock_meta(path: Path | None) -> pd.DataFrame | None:
+    if path is None:
+        return None
+    if not path.exists():
+        raise FileNotFoundError(f"Stock metadata file not found: {path}")
+
+    if path.suffix.lower() == ".parquet":
+        meta = pd.read_parquet(path)
+    else:
+        meta = pd.read_csv(path)
+
+    if "ts_code" not in meta.columns:
+        raise ValueError(f"Stock metadata must contain column ts_code: {path}")
+
+    meta = meta.copy()
+    meta["ts_code"] = meta["ts_code"].astype(str)
+    return meta.drop_duplicates("ts_code", keep="last")
+
+
+def attach_stock_meta(df: pd.DataFrame, stock_meta: pd.DataFrame | None) -> pd.DataFrame:
+    if stock_meta is None:
+        return df
+
+    keep_cols = ["ts_code"]
+    for cols in [NAME_COLS, EXCHANGE_COLS, ST_FLAG_COLS, STATUS_COLS]:
+        for col in cols:
+            if col in stock_meta.columns and col not in keep_cols:
+                keep_cols.append(col)
+
+    if keep_cols == ["ts_code"]:
+        return df
+
+    merged = df.merge(stock_meta[keep_cols], on="ts_code", how="left", suffixes=("", "_meta"))
+    for col in keep_cols:
+        if col == "ts_code":
+            continue
+        meta_col = f"{col}_meta"
+        if meta_col not in merged.columns:
+            continue
+        if col in merged.columns:
+            base = merged[col]
+            fill_mask = base.isna() | (base.astype(str).str.strip() == "")
+            merged.loc[fill_mask, col] = merged.loc[fill_mask, meta_col]
+            merged = merged.drop(columns=[meta_col])
+        else:
+            merged = merged.rename(columns={meta_col: col})
+
+    return merged
+
+
+def filter_stock_pool(
+    df: pd.DataFrame,
+    stock_meta: pd.DataFrame | None = None,
+    allow_missing_stock_meta: bool = False,
+) -> pd.DataFrame:
+    df = attach_stock_meta(df, stock_meta)
+    before_rows = len(df)
+    before_stocks = int(df["ts_code"].nunique())
+    codes = df["ts_code"].astype(str)
+
+    # 过滤北交所：常见代码后缀 .BJ，也兼容带交易所/板块字段的股票状态表。
+    drop_mask = codes.str.endswith(".BJ")
+    exchange_col = _first_existing_col(df, EXCHANGE_COLS)
+    if exchange_col is not None:
+        exchange_text = df[exchange_col].fillna("").astype(str)
+        drop_mask |= exchange_text.str.contains("BJ|BSE|北交|北京证券", case=False, regex=True)
+
+    name_col = _first_existing_col(df, NAME_COLS)
+    if name_col is not None:
+        name = df[name_col].fillna("").astype(str)
+        drop_mask |= name.str.contains(r"ST|\*ST|退市", case=False, na=False, regex=True)
+
+    has_flag_col = any(col in df.columns for col in ST_FLAG_COLS)
+    has_status_col = any(col in df.columns for col in STATUS_COLS)
+    if name_col is None and not has_flag_col and not has_status_col and not allow_missing_stock_meta:
+        raise ValueError(
+            "Cannot guarantee ST/delisted stock filtering because market data has no "
+            "stock name/status columns and --stock_meta was not provided. Pass a stock "
+            "metadata CSV/Parquet with ts_code plus name/is_st/list_status/exchange "
+            "columns, or explicitly add --allow_missing_stock_meta to run with only .BJ filtering."
+        )
+
+    for flag_col in ST_FLAG_COLS:
+        if flag_col in df.columns:
+            drop_mask |= _truthy_flag(df[flag_col])
+
+    for status_col in STATUS_COLS:
+        if status_col in df.columns:
+            drop_mask |= _bad_status(df[status_col])
+
+    df = df[~drop_mask].copy()
+    after_stocks = int(df["ts_code"].nunique())
+    print(
+        "stock pool filter: "
+        f"rows {before_rows}->{len(df)}, stocks {before_stocks}->{after_stocks}, "
+        f"removed_stocks={before_stocks - after_stocks}"
+    )
+    if name_col is None and not has_flag_col and not has_status_col:
+        print(
+            "WARNING: no stock name/status metadata was provided; prediction can only "
+            "filter .BJ codes, not ST names that are absent from market data."
+        )
 
     return df
 
@@ -180,14 +296,16 @@ def build_latest_sequences(df: pd.DataFrame, signal_date, seq_len: int):
         signal_window_count += 1
 
         x = last[FEATURE_COLS].to_numpy(dtype=np.float32)
+        row = {
+            "signal_date": signal_date,
+            "ts_code": ts_code,
+            "last_close": last["close"].iloc[-1],
+        }
+        name_col = _first_existing_col(last, NAME_COLS)
+        if name_col is not None:
+            row["name"] = last[name_col].dropna().astype(str).iloc[-1] if last[name_col].notna().any() else ""
         xs.append(x)
-        rows.append(
-            {
-                "signal_date": signal_date,
-                "ts_code": ts_code,
-                "last_close": last["close"].iloc[-1],
-            }
-        )
+        rows.append(row)
 
     if not xs:
         date_text = pd.to_datetime(signal_date).strftime("%Y-%m-%d")
@@ -341,6 +459,17 @@ def main():
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--scaler", type=str, required=True)
     parser.add_argument("--positions", type=str, default="data/current_positions.csv")
+    parser.add_argument(
+        "--stock_meta",
+        type=str,
+        default=None,
+        help="可选股票基础信息/状态表，需含 ts_code，可含 name/is_st/list_status/exchange 等列用于过滤 ST、退市和北交所股票。",
+    )
+    parser.add_argument(
+        "--allow_missing_stock_meta",
+        action="store_true",
+        help="允许在没有股票名称/状态表时继续预测。此时只能过滤 .BJ，无法保证过滤 ST/退市股票。",
+    )
     parser.add_argument("--out_dir", type=str, default="outputs_daily")
     parser.add_argument("--seq_len", type=int, default=10)
     parser.add_argument("--top_k_hold", type=int, default=10)
@@ -359,7 +488,12 @@ def main():
         device = "cpu"
 
     df = read_all_stock_data(data_dir)
-    df = filter_stock_pool(df)
+    stock_meta = read_stock_meta(Path(args.stock_meta)) if args.stock_meta else None
+    df = filter_stock_pool(
+        df,
+        stock_meta=stock_meta,
+        allow_missing_stock_meta=args.allow_missing_stock_meta,
+    )
     df = add_features(df)
     df = apply_train_scaler(df, Path(args.scaler))
 
