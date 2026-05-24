@@ -132,8 +132,14 @@ def run_command(cmd: list[str], cwd: Path) -> tuple[int, str]:
 
 
 def prediction_error_hint(output: str) -> str:
-    if "Cannot guarantee ST/delisted stock filtering" in output:
-        return "预测已停止：行情文件没有股票名称或状态列，无法保证过滤 ST/退市股票。请在侧边栏填写股票状态表，或确认风险后在命令行显式允许未校验股票池。"
+    if "Cannot guarantee ST stock filtering" in output:
+        return "预测已停止：请在侧边栏同时填写 basic.csv 和每日 stock_st 文件，系统需要这两个文件才能过滤 ST、退市名称和北交所股票。"
+    if "the following arguments are required: --basic_csv, --stock_st" in output:
+        return "预测已停止：现在强制要求提交 basic.csv 和每日 stock_st 文件后才能预测。"
+    if "basic.csv is missing required columns" in output:
+        return "basic.csv 缺少必要列。请使用基础数据里的 basic.csv，至少需要 ts_code/name/market。"
+    if "stock_st file is missing required columns" in output:
+        return "stock_st 文件缺少必要列。请使用其它数据里的每日 stock_st 文件，至少需要 ts_code/trade_date。"
     if "missing required columns" in output or "Column not found" in output:
         return "行情文件缺少预测所需的 OHLCV 列。请确认包含 trade_date/open/high/low/close/pre_close/vol/amount。"
     if "No valid sequence generated" in output:
@@ -259,10 +265,15 @@ with st.sidebar:
         "训练集预处理参数",
         str(project_root / "outputs_lstm_seq10_oo_e60" / "preprocess_state_lstm.json"),
     )
-    stock_meta = st.text_input(
-        "股票状态表，用于过滤 ST",
+    basic_csv = st.text_input(
+        "basic.csv（必填）",
         "",
-        help="可填写含 ts_code/name/is_st/list_status/exchange 等列的 CSV/Parquet，用于预测前过滤 ST、退市和北交所股票。",
+        help="填写基础数据里的 basic.csv 路径，需包含 ts_code/name/market，用于过滤名称含 ST/退市和北交所股票。",
+    )
+    stock_st = st.text_input(
+        "每日 stock_st 文件（必填）",
+        "",
+        help="填写其它数据 stock_st/ 下与 signal_date 对应或不晚于 signal_date 的每日文件，需包含 ts_code/trade_date。",
     )
     seq_len = st.number_input("seq_len", min_value=1, max_value=120, value=10, step=1)
     signal_date = st.text_input("signal_date，可留空自动识别最新日期", "")
@@ -431,14 +442,20 @@ with tab_predict:
         "--device",
         device,
     ]
-    if stock_meta.strip():
-        cmd.extend(["--stock_meta", str(to_path(stock_meta.strip()))])
+    if basic_csv.strip():
+        cmd.extend(["--basic_csv", str(to_path(basic_csv.strip()))])
+    if stock_st.strip():
+        cmd.extend(["--stock_st", str(to_path(stock_st.strip()))])
     if signal_date.strip():
         cmd.extend(["--signal_date", signal_date.strip()])
 
     st.code(" ".join(cmd), language="bash")
 
-    if st.button("运行每日预测", type="primary", disabled=not parameter_ok):
+    required_stock_files_ok = bool(basic_csv.strip()) and bool(stock_st.strip())
+    if not required_stock_files_ok:
+        st.warning("请先填写 basic.csv 和每日 stock_st 文件路径，再运行每日预测。")
+
+    if st.button("运行每日预测", type="primary", disabled=not parameter_ok or not required_stock_files_ok):
         if not predict_script.exists():
             st.error(f"找不到预测脚本：{predict_script}")
         else:
